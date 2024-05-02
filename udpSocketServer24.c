@@ -6,6 +6,10 @@
 #include <string.h> // For memset
 #include <stdio.h> // For printf
 
+#include <stdint.h> // For integer types
+#include <time.h> // For time
+#include <math.h> // For maths functions
+
 void OSInit( void ) // Function to initialize the operating system
 {
      //Step 1.0
@@ -33,7 +37,7 @@ void cleanupUDP( int internet_socket ); // Function to cleanup the socket
 //TCP_Server function prototypes
 int initializationTCP(); // Function to initialize the internet address
 int connectionTCP( int internet_socket ); // Function to connect to the client
-void executionTCP( int internet_socket ); // Function to execute the socket function
+void executionTCP( int internet_socket, struct sockaddr * internet_address, socklen_t internet_address_length );// Function to execute the socket function
 void cleanupTCP( int internet_socket, int client_internet_socket ); // Function to cleanup the socket
 
 
@@ -45,11 +49,14 @@ int main(int argc, char *argv[])
     //////////////////////////
 
     OSInit(); // Initialize the operating system
+    struct sockaddr * internet_address = 0; // Structure to hold the internet address
+    socklen_t internet_address_length = 0; // Variable to hold the internet address length
 
     int internet_socketUDP = initializationUDP(); // Initialize the internet address
     //////////////////////////
     /////// Ececution/////////
     //////////////////////////
+      // Instellen van time-out op 1 seconde
 
     executionUDP( internet_socketUDP); // Execute the socket function
     /////////////////////////// 
@@ -71,12 +78,14 @@ int main(int argc, char *argv[])
 
     int internet_socketTCP = initializationTCP(); // Initialize the internet address
 
-    int client_internet_socket = connectionTCP( internet_socketTCP ); // Connect to the client
+    while (1)
+    {
+        int client_internet_socket = connectionTCP( internet_socketTCP ); // Connect to the client
 
-    executionTCP( internet_socketTCP ); // Execute the socket function
+        executionTCP( client_internet_socket, internet_address, internet_address_length); // Execute the socket function
 
-    cleanupTCP( internet_socketTCP, client_internet_socket ); // Cleanup the socket
-
+        cleanupTCP( internet_socketTCP, client_internet_socket ); // Cleanup the socket
+    }
     WSACleanup(); // Cleanup Winsock
 
     //End TCP Server
@@ -262,31 +271,87 @@ int connectionTCP( int internet_socket )
     return client_internet_socket; // Return the client socket
 }
 
-void executionTCP( int internet_socket )
+void executionTCP( int internet_socket, struct sockaddr * internet_address, socklen_t internet_address_length )
 {
-    //Step 3.1
-    int number_of_bytes_received = 0; // Variable to hold the number of bytes received
-    char buffer[1000]; // Buffer to hold the received data
 
-    // Wait for a "GO" message from the client
-    number_of_bytes_received = recv(internet_socket, buffer, (sizeof(buffer) - 1), 0); // Receive data from the client
+    printf("\n##### Starting TCP Server Execution #####\n\n");
+
+    int random_number, guess; // Variables to hold the random number and the guess
+    int number_of_bytes_received = 0; // Variable to hold the number of bytes received
+   char buffer[1000]; // Buffer to hold the received data  
+
+     // Generate a random number between 0 and 1000000
+    srand(time(NULL));
+    random_number = rand() % 1000000; 
+    printf("Random number: %d\n", random_number); // Print the random number
+
+    //
+    while(1)
+  {
+    // Receive data from the client
+    printf("\nBeguinning round ... good luck!\n");
+    number_of_bytes_received = recv(internet_socket, (char *)&guess, sizeof(guess), 0); // Receive data from the client
     if(number_of_bytes_received == -1) // If the data is not received
     {
         perror("recv"); // Print an error message
     }
-    else
+    /*else
     {
         buffer[number_of_bytes_received] = '\0'; // Null terminate the buffer
-        printf("Received: %s\n", buffer); // Print the received data
+        printf("Received guess: %d\n", buffer); // Print the received data
     }
-
-    //Step 3.2
-    int number_of_bytes_send = 0; // Variable to hold the number of bytes sent
-    number_of_bytes_send = send(internet_socket, "Hello, TCP Server World!\n", 16, 0); // Send data to the client
-    if(number_of_bytes_send == -1) // If the data is not sent
+   */
+   if(number_of_bytes_received == 0)
+   {
+         printf("Error receveid data from by client\n");
+         break;
+   }
+   else
     {
-        perror("send"); // Print an error message
-    }   
+         //guess = buffer[0]; // Get the guess from the buffer
+          printf("Received guess: %d\n", guess); // Print the received guess
+    }
+    //compare guess with random number
+
+    if(guess < random_number)
+    {
+     if(send(internet_socket,"Higher", sizeof("Higher"), 0) == -1)
+     {
+        perror("Error sending data to client");
+        break;
+     }
+
+    }  
+    else if(guess > random_number)
+    {
+     
+     if(send(internet_socket,"Lower", sizeof("Lower"), 0) == -1)
+     {
+        perror("Error sending data to client");
+        break;
+     } 
+     // Send data to the client
+     }
+      else if(guess == random_number)
+     {
+        if(send(internet_socket,"Correct", sizeof("Correct"), 0) == -1)
+        {
+            perror("Error sending data to client");
+            break;
+        }
+     }
+        else
+        {
+            if(send(internet_socket,"Error", sizeof("Error"), 0) == -1)
+            {
+                perror("Error sending data to client");
+                break;
+        }
+        break;
+     }
+    
+ }
+  
 }
 
 void cleanupTCP( int internet_socket, int client_internet_socket )
