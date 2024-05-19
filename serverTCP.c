@@ -7,6 +7,8 @@
     #include <string.h> // for memset
     #include <stdlib.h> // for exit
     #include <stdint.h> // for uint16_t, uint32_t
+
+   
     void OSInit( void )
     {
         WSADATA wsaData;
@@ -23,30 +25,75 @@
     }
     #define perror(string) fprintf(stderr, string ": WSA errno = %d\n", WSAGetLastError())
 
-    #define LOG_FILE "UnoReverse"
+    //#define LOG_FILE "log.txt"
     #define PORT "22"
     #define ATTACK_DATA "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed nonummy."
+
+    #include <pthread.h> // for pthread_create, pthread_join 
+
+    struct ThreadArgs
+    {
+        int internet_socket;
+        FILE *log_file;
+        char client_internet_string[INET6_ADDRSTRLEN];
+    };
     //function prototype
-    int initialization();
-    int connection(int internet_socket );
-    void excution(int internet_socket );
-    void cleanup(int internet_socket, int client_internt_socket );
+    int initialization(int flag);
+    int connection(int internet_socket, const char* client_address_string, int size); //connect to the client 
+    void IPgetRequest(const char * client_address_string, FILE *log_file,char thread_id_str[10]); //get the IP address of the client 
+    void execution(int internet_socket, FILE *log_file, char client_internet_string[INET6_ADDRSTRLEN]);
+    void cleanup(int client_internt_socket );
+    void sub_executionThread(void* arg);
 
     int main(int argc, char *argv[])
     {
+        FILE *log_file = fopen(log_file, "w");
+        if(log_file == NULL)
+        {
+            perror("fopen");
+            exit(1);
+        }
 
-        OSInit();
+        OSInit();//initialize the winsock library 
 
-        int internet_socket = initialization();
-        int client_internt_socket = connection(internet_socket);
-        excution(client_internt_socket);
-        cleanup(internet_socket, client_internt_socket);
+        int internet_socket = initialization(0); //initialize the internet socket 
+
+        char client_address_string[INET6_ADDRSTRLEN];
+
+        while(1)
+        {
+            int client_internet_socket = connection(internet_socket, client_address_string, sizeof(client_address_string)); //connect to the client 
+            pthread_t thread; //initialize the thread 
+
+            //allocate memory for the thread_data struct 
+            struct ThreadArgs* data = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
+
+            data->internet_socket = client_internet_socket; //initialize the internet socket 
+            data->log_file = log_file; //initialize the log file 
+
+            strcpy(data->client_address_string, client_address_string); //copy the client address to the thread data struct 
+
+            //create the thread
+            int thread_create_data = pthread_create(&thread, NULL, sub_executionThread, data);
+            if(thread_create_data != 0)
+            {
+                perror("pthread_create");
+                exit(1);
+            }
+
+        
+        }
+
+        fclose(log_file); //close the log file 
+        
+        //excution(client_internt_socket);
+        cleanup(internet_socket); //cleanup the internet socket
 
         OSCleanup();
         return 0;
     }
 
-    int initialization()
+    int initialization(int flag)
     {
         struct addrinfo internet_address_setup;
         struct addrinfo *internet_address_result;
@@ -104,7 +151,7 @@
         return internet_socket;
     }
 
-    int connection(int internet_socket )
+    int connection(int internet_socket, const char* client_address_string, int size)
     {
         struct sockaddr_storage client_address;
         socklen_t client_address_size = sizeof(client_address);
@@ -126,9 +173,9 @@
 
     }
 
-    void cleanup(int internet_socket, int client_internt_socket )
+    void cleanup(int client_internt_socket )
     {
         close(client_internt_socket);
-        close(internet_socket);
+        //close(internet_socket);
     }
 
