@@ -71,7 +71,7 @@
             data->internet_socket = client_internet_socket; //initialize the internet socket 
             data->log_file = log_file; //initialize the log file 
 
-            strcpy(data->client_address_string, client_address_string); //copy the client address to the thread data struct 
+            strcpy(data->client_address, client_address_string); //copy the client address to the thread data struct 
 
             //create the thread
             int thread_create_data = pthread_create(&thread, NULL, sub_executionThread, data);
