@@ -4,6 +4,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
+#include <time.h>
+#include <sys/types.h>
 
 void OSInit(void) {
     WSADATA wsaData;
@@ -96,90 +101,71 @@ void IPgetResuest(const char *client_address_length, FILE *file_ptr, char thread
     cleanup(internet_socket_HTTP);
 }
 
-/*
-int send_http_get_request(const char* ip_address) {
-    int http_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (http_socket == INVALID_SOCKET) {
-        perror("HTTP socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-    struct hostent* host = gethostbyname(ip_address);
-    if (!host) {
-        perror("gethostbyname failed");
-        exit(EXIT_FAILURE);
-    }
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    memcpy(&server_addr.sin_addr.s_addr, host->h_addr_list[0], host->h_length);
-    server_addr.sin_port = htons(80);
-
-    if (connect(http_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("HTTP connect failed");
-        exit(EXIT_FAILURE);
-    }
-    char request[1000];
-    sprintf(request, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", ip_address);
-    send(http_socket, request, strlen(request), 0);
-
-    return http_socket;
-}
-void receive_http_response(int http_socket) {
-    char buffer[BUFFER_SIZE];
-    int bytes_received;
-    while ((bytes_received = recv(http_socket, buffer, BUFFER_SIZE - 1, 0)) > 0) {
-        buffer[bytes_received] = '\0';
-        printf("%s", buffer);
-    }
-}
-void handle_http_request(const char* ip_address) {
-    int http_socket = send_http_get_request(ip_address);
-    receive_http_response(http_socket);
-    closesocket(http_socket);
-}
-*/
-
+//HTTP CLIENT - initialize function
 int initialization(int flag)
 {
-    int internet_socket_HTTP = socket(AF_INET, SOCK_STREAM, 0); //create a socket to connect to the API
-    if(internet_socket_HTTP == -1)
+    struct addrinfo internet_address_setup;
+    struct addrinfo *internet_address_result;
+    memset(&internet_address_setup, 0, sizeof(internet_address_setup)); 
+    internet_address_setup.ai_family = AF_INET;
+    internet_address_setup.ai_socktype = SOCK_STREAM;
+    //internet_address_setup.ai_protocol = AI_PASSIVE;
+
+    if(flag == 1)
     {
-        perror("socket() failed");
-        //exit(EXIT_FAILURE);
+        int getaddrinfo_return = getaddrinfo("ip-api.com", "80", &internet_address_setup, &internet_address_result);
+        if(getaddrinfo_return != 0)
+        {
+            fprintf(stderr, "getaddrinfo() failed: %s\n", gai_strerror(getaddrinfo_return)); //print the error message to the standard error stream   
+            exit(1);
+        }
+
+        int internet_socket_HTTP = -1;
+        struct addrinfo *internet_address_result_iterator = internet_address_result;
+        while(internet_address_result_iterator != NULL)
+        {
+            internet_socket_HTTP = socket(internet_address_result_iterator->ai_family, internet_address_result_iterator->ai_socktype, internet_address_result_iterator->ai_protocol);
+            if(internet_socket_HTTP == -1)
+            {
+                perror("socket() failed");
+                
+            }
+            else{
+                int connect_result = connect(internet_socket_HTTP, internet_address_result_iterator->ai_addr, internet_address_result_iterator->ai_addrlen);
+                if(connect_result == -1)
+                {
+                    perror("connect() failed");
+                    close(internet_socket_HTTP);
+                } else {
+                    break;
+                }
+            }
+            internet_address_result_iterator = internet_address_result_iterator->ai_next;
+        }
+        freeaddrinfo(internet_address_result);
+
+        if(internet_socket_HTTP == -1)
+        {
+            fprintf(stderr, "Could not connect to the server\n");
+            exit(1);
+        }
+        return internet_socket_HTTP;
     }
-
-    struct sockaddr_in server_address_HTTP = {0}; //initialize the server address structure
-    server_address_HTTP.sin_family = AF_INET; //set the address family to AF_INET
-    server_address_HTTP.sin_port = htons(80); //set the port to 80
-
-    struct hostent *host = gethostbyname("ip-api.com"); //get the IP address of the API
-    if(host == NULL)
-    {
-        perror("gethostbyname() failed");
-        //exit(EXIT_FAILURE);
-    }
-
-    server_address_HTTP.sin_addr.s_addr = *(long*)host->h_addr_list[0]; //set the IP address of the API
-
-    if(connect(internet_socket_HTTP, (struct sockaddr *)&server_address_HTTP, sizeof(server_address_HTTP)) == -1) //connect to the API
-    {
-        perror("connect() failed");
-        //exit(EXIT_FAILURE);
-    }
-
-    return internet_socket_HTTP;
-
+    return -1;
 }
-int main(int argc, char* argv[]) {
-    OSInit();
 
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <attacker_ip>\n", argv[0]);
-        return 1;
+
+
+//HTTP CLIENT - cleanup function
+void cleanup(int client_internet_socket)
+{
+    int shutdown_return = shutdown(client_internet_socket, SD_SEND);
+    if(shutdown_return == -1)
+    {
+        perror("shutdown() failed");
+        //exit(EXIT_FAILURE);
     }
-
-    handle_http_request(argv[1]);
-
-    OSCleanup();
-    return 0;
+    close(client_internet_socket);
 }
+
+
