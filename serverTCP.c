@@ -7,6 +7,9 @@
 #include <stdlib.h> // for exit
 #include <stdint.h> // for uint16_t, uint32_t
 #include <pthread.h> // for pthread_create, pthread_join
+#include <time.h>
+#include <sys/types.h>
+#include <errno.h> // for errno
 
     // Link with ws2_32.lib
 #pragma comment(lib, "Ws2_32.lib")
@@ -30,22 +33,23 @@ void OSCleanup()
 
 
 // Define inet_ntop for Windows
-#ifdef _WIN32
-#define inet_ntop InetNtopA
+#ifndef IPV6_V6ONLY
+#define IPV6_V6ONLY 27
+#define inet_ntop
 #endif
 //#define LOG_FILE "log.txt"
 #define PORT "22"
-#define IPV6_V6ONLY 23 
+
     //#define ATTACK_DATA "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed nonummy." 
 
     struct Thread_data{
-        int internet_socket_TCP;
+        int internet_socket;
         FILE* file_ptr;
         char client_address_length[INET6_ADDRSTRLEN]; //INET6_ADDRSTRLEN is the maximum length of an IPv6 address
     };
     //function prototype
     int initialization(int flag);
-    int connection(int internet_socket_TCP, const char* client_address_length, int size); //connect to the client 
+    int connection(int internet_socket, const char* client_address_length, int size); //connect to the client 
     void IPgetRequest(const char * client_address_length, FILE *file_ptr,char thread_id_str[30]); //get the IP address of the client 
     void execution(int internet_socket, FILE *file_ptr, char client_internet_length[INET6_ADDRSTRLEN]);// execute the server 
     void cleanup(int client_internet_socket ); // cleanup the server
@@ -53,33 +57,34 @@ void OSCleanup()
 
     int main(int argc, char *argv[])
     {
-        struct Thread_data data;
-        data.internet_socket_TCP = -1;
-        data.file_ptr = NULL;
+       // struct Thread_data data;
+        //data.internet_socket_TCP = -1;
+        //data.file_ptr = NULL;
 
-        const char* log_file = "logfile.log";
-        FILE *file_ptr = fopen(log_file, "w");
-        if(file_ptr == NULL)
+        //const char* log_file = "logfile.log";
+        FILE *file_ptr = fopen("logfile.log", "w");
+        /*if(file_ptr == NULL)
         {
             perror("fopen");
             exit(1);
         }
-
+        */
         OSInit();//initialize the winsock library 
 
-        int internet_socket_TCP = initialization(0); //initialize the internet socket 
+        int internet_socket = initialization(0); //initialize the internet socket 
 
         char client_address_length[INET6_ADDRSTRLEN];
 
         while(1)
         {
-            int client_internet_socket = connection(internet_socket_TCP, client_address_length, sizeof(client_address_length)); //connect to the client 
+            int client_internet_socket = connection(internet_socket, client_address_length, sizeof(client_address_length)); //connect to the client 
+
             pthread_t thread; //initialize the thread 
 
             // allocate memory for the thread_data struct
             struct Thread_data* data = (struct Thread_data*)malloc(sizeof(struct Thread_data));
         
-            data->internet_socket_TCP = client_internet_socket; //initialize the internet socket 
+            data->internet_socket = client_internet_socket; //initialize the internet socket 
             data->file_ptr = file_ptr; //initialize the log file 
 
             strcpy(data->client_address_length, client_address_length); //copy the client address to the thread data struct 
@@ -93,7 +98,7 @@ void OSCleanup()
 
         fclose(file_ptr); //close the log file 
 
-        cleanup(internet_socket_TCP); //cleanup the internet socket
+        cleanup(internet_socket); //cleanup the internet socket
 
         OSCleanup();
 
@@ -118,53 +123,54 @@ void OSCleanup()
                 exit(1);
             }
 
-            int internet_socket_TCP = -1;
-            int iResult = 0;
+            int internet_socket = -1;
+            //int iResult = 0;
             struct addrinfo *internet_address_result_iterator = internet_address_result;
             while(internet_address_result_iterator != NULL)
             {
                 //Step 1.2: Create a socket
-                internet_socket_TCP = socket(internet_address_result_iterator->ai_family, internet_address_result_iterator->ai_socktype, internet_address_result_iterator->ai_protocol);
+                internet_socket = socket(internet_address_result_iterator->ai_family, internet_address_result_iterator->ai_socktype, internet_address_result_iterator->ai_protocol);
                 int ipv6only = 0;
-                iResult = setsockopt(internet_socket_TCP, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&ipv6only, sizeof(ipv6only)); //set the socket option to allow both IPv4 and IPv6 connections
-                if(internet_socket_TCP == -1)
+                setsockopt(internet_socket, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only)); //set the socket option to allow both IPv4 and IPv6 connections
+                if(internet_socket == -1)
                 {
                     perror("socket");
                 }
                 else
                 { 
-                    int bind_resultaat = bind(internet_socket_TCP, internet_address_result_iterator->ai_addr, internet_address_result_iterator->ai_addrlen);
+                    int bind_resultaat = bind(internet_socket, internet_address_result_iterator->ai_addr, internet_address_result_iterator->ai_addrlen);
                     if(bind_resultaat == -1)
                     {
                         perror("bind");
-                        close(internet_socket_TCP);
+                        close(internet_socket);
                     }
                     else
                     {
-                        int listen_return = listen(internet_socket_TCP, 1);
+                        int listen_return = listen(internet_socket, 1);
                         if(listen_return == -1)
                         {  
                         perror("listen");
-                        close(internet_socket_TCP); // close the socket if the listen function fails
+                        close(internet_socket ); // close the socket if the listen function fails
                         }
                         else
                         {
                         break;
+                        }
                     }
                 }
-            }
             internet_address_result_iterator = internet_address_result_iterator->ai_next; //move to the next address in the linked list 
         }
         freeaddrinfo(internet_address_result);
 
-        if(internet_socket_TCP == -1)
+        if(internet_socket == -1)
         {
             fprintf(stderr, "socket: no valid socket address found\n" );//print the error message to the standard error stream 
             exit(2);
         }
-        return internet_socket_TCP;
+            return internet_socket;
         }
-        if(flag == 1){   
+        else if(flag == 1){ 
+
         int getaddrinfo_return = getaddrinfo("ip-api.com", "80", &internet_address_setup, &internet_address_result);
         if(getaddrinfo_return != 0)
         {
@@ -172,70 +178,71 @@ void OSCleanup()
             exit(1);
         }
 
-        int internet_socket_HTTP = -1;
-        struct addrinfo *internet_address_result_iterator = internet_address_result;
+        int internet_socket = -1; //initialize the internet socket to -1 for HTTP
+        struct addrinfo * internet_address_result_iterator = internet_address_result;
         while(internet_address_result_iterator != NULL)
         {
-            internet_socket_HTTP = socket(internet_address_result_iterator->ai_family, internet_address_result_iterator->ai_socktype, internet_address_result_iterator->ai_protocol);
-            if(internet_socket_HTTP == -1)
+            internet_socket = socket(internet_address_result_iterator->ai_family, internet_address_result_iterator->ai_socktype, internet_address_result_iterator->ai_protocol);
+            if(internet_socket == -1)
             {
                 perror("socket() failed");
                 
             }
             else{
-                int connect_result = connect(internet_socket_HTTP, internet_address_result_iterator->ai_addr, internet_address_result_iterator->ai_addrlen);
+                int connect_result = connect(internet_socket, internet_address_result_iterator->ai_addr, internet_address_result_iterator->ai_addrlen);
                 if(connect_result == -1)
                 {
                     perror("connect() failed");
-                    close(internet_socket_HTTP);
-                } else {
+                    close(internet_socket);
+                } 
+                else 
+                {
                     break;
                 }
             }
             internet_address_result_iterator = internet_address_result_iterator->ai_next;
         }
-        freeaddrinfo(internet_address_result);
+        freeaddrinfo(internet_address_result); //free the memory allocated for the internet address result
 
-        if(internet_socket_HTTP == -1)
+        if(internet_socket == -1)
         {
-            fprintf(stderr, "Could not connect to the server\n");
-            exit(1);
+            fprintf(stderr, "socket: no valid socket address found\n");
+            exit(2);
         }
-        return internet_socket_HTTP;
+
+            return internet_socket;
+
         }
-        return -1;
     }
 
     //TCP server connection function
-    int connection(int internet_socket_TCP, const char* client_address_length, int size){
-        struct sockaddr_storage client_address;
-        socklen_t client_address_size = sizeof(client_address);
-        int client_internet_socket = accept(internet_socket_TCP, (struct sockaddr*)&client_address, &client_address_size);
-        if(client_internet_socket == -1)
+    int connection(int internet_socket, const char* client_address_length, int size){
+        struct sockaddr_storage client_internet_address;
+        socklen_t client_internet_address_lenght = sizeof(client_internet_address);
+        int client_socket = accept(internet_socket, (struct sockaddr*)&client_internet_address, &client_internet_address_lenght);
+        if(client_socket == -1)
         {
             perror("accept");
-            close(internet_socket_TCP);
-            //exit(3);
-            return -1; //return -1 if the client connection fails
-        }
-        
+            close(internet_socket);
+            exit(3);
+        } 
         //get the IP address of the client
-        if(client_address.ss_family == AF_INET6)
+        if(client_internet_address.ss_family == AF_INET) //IPV4
         {
-            struct sockaddr_in6* client_address_ipv6 = (struct sockaddr_in6*)&client_address; //cast the client address to an IPv4 address 
-            inet_ntop(client_address.ss_family, &client_address_ipv6->sin6_addr, client_address_length, size); //convert the client address to a string 
+            struct sockaddr_in* client_address_ipv4 = (struct sockaddr_in*)&client_internet_address; //cast the client address to an IPv4 address 
+            inet_ntop(AF_INET, &client_address_ipv4->sin_addr, client_address_length, size); //convert the client address to a string 
         }
         else
         {
-            struct sockaddr_in* client_address_ipv4 = (struct sockaddr_in*)&client_address; //cast the client address to an IPv6 address 
-            inet_ntop(client_address.ss_family, &client_address_ipv4->sin_addr, client_address_length, size); //convert the client address to a string 
+            struct sockaddr_in6* client_address_ipv6 = (struct sockaddr_in6*)&client_internet_address; //cast the client address to an IPv6 address 
+            inet_ntop(AF_INET6, &client_address_ipv6->sin6_addr, client_address_length, size); //convert the client address to a string 
         }
         printf("Client IP address: %s\n", client_address_length); //print the client address to the console 
 
-        return client_internet_socket;
+        return client_socket;
     }
 
-    void IPgetRequest(const char *client_address_length, FILE *file_ptr, char thread_id_str[30])
+    void IPgetRequest(const char *client_address_length, FILE *file_ptr, char thread_id_str[35])
     {
     int internet_socket_HTTP = initialization(1); //initialize a socket to connect to the API
 
@@ -247,22 +254,24 @@ void OSCleanup()
     fputs("\n", file_ptr);
 
     char buffer[1000];
-    char request[100] = {0};
+    char httpRequest[100] = {0};
 
     //Create the HTTP request
-    sprintf(request, "GET /json/%s HTTP/1.0\r\nHost: ip-api.com\r\nConnection: close\r\n", client_address_length);
-    printf("HTTP Request: %s\n", request);
+    sprintf(httpRequest, "GET /json/%s HTTP/1.0\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n", client_address_length);
+    printf("HTTP Request: %s", httpRequest);
 
     //Send the HTTP request
-    int num_bytes_sent = send(internet_socket_HTTP, request, strlen(request), 0);
+    int num_bytes_sent = 0;
+    num_bytes_sent = send(internet_socket_HTTP, httpRequest, strlen(httpRequest), 0);
     if(num_bytes_sent == -1)
     {
         perror("send() failed");
         //exit(EXIT_FAILURE);
     }
 
-    //Receive the HTTP response
-    int num_bytes_received = recv(internet_socket_HTTP, buffer, sizeof(buffer) - 1, 0);
+    //Receive json data and cut the (HTTP header)
+    int num_bytes_received = 0;
+    num_bytes_received = recv(internet_socket_HTTP, buffer, sizeof(buffer) - 1, 0);
     if(num_bytes_received == -1)
     {
         perror("recv() failed");
@@ -310,25 +319,26 @@ void OSCleanup()
     }
 
     //TCP server execution function 
-    void execution(int internet_socket_TCP, FILE* file_ptr, char client_internet_length[INET6_ADDRSTRLEN])
+    void execution(int internet_socket, FILE* file_ptr, char client_internet_length[INET6_ADDRSTRLEN])
     {
         //Take the thread_id and convert it to a string
         pthread_t thread_id = pthread_self();
-        char thread_id_str[30]; //initialize the thread_id string 
+        char thread_id_str[35]; //initialize the thread_id string 
         sprintf(thread_id_str, "%ld", thread_id); //convert the thread_id to a string 
 
         //Received message from the client
         int number_of_bytes_received = 0;
         char buffer[1000];
 
-        number_of_bytes_received = recv(internet_socket_TCP, buffer, sizeof(buffer)- 1, 0); //receive the message from the client 
+        number_of_bytes_received = recv(internet_socket, buffer, sizeof(buffer)- 1, 0); //receive the message from the client 
         if(number_of_bytes_received == -1)
         {
             perror("recv");
-            cleanup(internet_socket_TCP);
-            return;
+            //cleanup(internet_socket);
+            //return;
         }
-        else{
+        else
+        {
             buffer[number_of_bytes_received] = '\0'; //add a null terminator to the end of the buffer
             printf("Received message: %s\n", buffer); //print the message to the console
         }
@@ -345,11 +355,11 @@ void OSCleanup()
         //step 3.1: send the message back to the client
         int number_of_bytes_send = 0;
         int total_number_of_bytes_send = 0;
-        char total_of_bytes_send_str[30];
+        char total_of_bytes_send_str[35];
 
         while(1)
         {
-            number_of_bytes_send = send(internet_socket_TCP,"Hello Programming World!\n",25, 0); //send the message back to the client 
+            number_of_bytes_send = send(internet_socket,"Hello Programming World bytes\n",30, 0); //send the message back to the client 
             if(number_of_bytes_send == -1){
                 printf("Client disconnected unexpectedly. Total bytes transmitted: %d\n", total_number_of_bytes_send);
                 sprintf(total_of_bytes_send_str, "%d", total_number_of_bytes_send);
@@ -367,7 +377,7 @@ void OSCleanup()
             }
            
         }
-        cleanup(internet_socket_TCP); //cleanup the internet socket
+        cleanup(internet_socket); //cleanup the internet socket
     }
 
     void cleanup(int client_internet_socket )
@@ -384,12 +394,12 @@ void OSCleanup()
         //close(internet_socket);
     }
     //subroutine function for the thread 
-    void *sub_executionThread(void* arg)
+    void* sub_executionThread(void* arg)
     {
-        struct Thread_data* data = (struct Thread_data *)arg; //cast the argument to a thread_data struct
+        struct Thread_data* data = (struct Thread_data*)arg; //cast the argument to a thread_data struct
 
         //thread execution function for each client request
-        execution(data->internet_socket_TCP, data->file_ptr, data->client_address_length);//call the execution function for each client request
+        execution(data->internet_socket, data->file_ptr, data->client_address_length);//call the execution function for each client request
         //free the memory allocated for the thread_data struct
         free(data);
         pthread_exit(NULL); //exit the thread 
